@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Compile CdM-8e",
+			"type": "cocas",
+			"target": "cdm8e",
+			"sources": [
+				"/Users/ruslanbogomolov/Desktop/Need/courses/log/main.asm"
+			],
+			"artifacts": {
+				"image": "${workspaceFolder}${/}build${/}out.img",
+				"debug": "${workspaceFolder}${/}build${/}out.dbg.json"
+			}
+		}
+	]
+}
