@@ -1,5 +1,17 @@
 {
     "configurations": [
-    
+    {
+        "name": "Debug CdM-16 with Harvard architecture",
+        "type": "cdm",
+        "request": "launch",
+        "address": "ws://localhost:7001",
+        "architecture": "harvard",
+        "target": "cdm16",
+        "environment": "external",
+        "artifacts": {
+            "image": "${workspaceFolder}${/}build${/}out.img",
+            "debug": "${workspaceFolder}${/}build${/}out.dbg.json"
+        }
+    }
     ]
 }
