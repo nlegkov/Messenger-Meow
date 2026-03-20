@@ -1,18 +1,5 @@
 {
     "configurations": [
-        {
-            "name": "Debug CdM-8e with Harvard architecture",
-            "type": "cdm",
-            "request": "launch",
-            "address": "ws://localhost:7001",
-            "target": "cdm8e",
-            "architecture": "harvard",
-            "environment": "external",
-            "artifacts": {
-                "image": "${workspaceFolder}${/}build${/}out.img",
-                "debug": "${workspaceFolder}${/}build${/}out.dbg.json"
-            },
-            "preLaunchTask": "Compile CdM-8e"
-        }
+    
     ]
 }
