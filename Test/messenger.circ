@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project source="3.8.0" version="1.0">
+  <!--
+    CdM-16 Messenger — схема для Logisim
+    ======================================
+    Компоненты:
+      - cdm16      : процессор CdM-16 (плагин logisim-cdm-emulator.jar)
+      - ROM        : память программы (Harvard: flash с кодом сервера)
+      - RAM        : память данных   (Harvard: рабочая память 64KB)
+      - UART x4    : плагин logisim-uart.jar, порты 8001–8004
+      - IRQ MUX    : мультиплексор запросов прерываний от 4 UART
+
+    Подключение плагинов (Project > Load Library > JAR Library):
+      - cdm-devkit-misc/jar/logisim-cdm-emulator.jar
+      - logisim-uart.jar (из cdm-processors/logisim-uart)
+
+    Память:
+      Гарвардская модель:
+        Память программы (ROM): код сервера + строковые константы
+        Память данных   (RAM): стек, буферы, MMIO
+      MMIO диапазон: 0xE000–0xE03F (32 байта на 4 UART-слота)
+  -->
+  <lib desc="#Base" name="0"/>
+  <lib desc="#Gates" name="1"/>
+  <lib desc="#Plexers" name="2"/>
+  <lib desc="#Arithmetic" name="3"/>
+  <lib desc="#Memory" name="4"/>
+  <lib desc="#I/O" name="5"/>
+  <lib desc="#TTY" name="6"/>
+  <!-- Внешние JAR-библиотеки — подключить вручную через Project > Load Library -->
+  <!-- lib desc="logisim-cdm-emulator.jar" name="7" -->
+  <!-- lib desc="logisim-uart.jar"         name="8" -->
+
+  <main name="messenger"/>
+  <toolbar>
+    <tool lib="0" name="Poke Tool"/>
+    <tool lib="0" name="Edit Tool"/>
+  </toolbar>
+
+  <circuit name="messenger">
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                    СХЕМА МЕССЕНДЖЕРА                         ║
+    ║                                                              ║
+    ║  [ROM]─────────────────────────────────────┐                ║
+    ║                                            ▼                ║
+    ║  [RAM]──[MMIO decode]──[UART#0 port=8001]──┤                ║
+    ║              │         [UART#1 port=8002]──┤  [CdM-16]     ║
+    ║              │         [UART#2 port=8003]──┤               ║
+    ║              │         [UART#3 port=8004]──┘               ║
+    ║              └──────────────────────────────────────────────║
+    ║                                                              ║
+    ║  IRQ: UART#0.dt → vec=5                                     ║
+    ║       UART#1.dt → vec=6                                     ║
+    ║       UART#2.dt → vec=7                                     ║
+    ║       UART#3.dt → vec=8                                     ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ИНСТРУКЦИЯ ПО СБОРКЕ В LOGISIM:
+    ================================
+
+    1. ЗАГРУЗКА ПЛАГИНОВ
+       Project > Load Library > JAR Library
+       Выберите: logisim-cdm-emulator.jar
+       Выберите: logisim-uart.jar
+
+    2. ПРОЦЕССОР CdM-16
+       Добавьте компонент "CdM-16" из библиотеки "CdM Emulator"
+       Настройки: Harvard mode = ON
+       Разместите в центре схемы
+
+    3. ПАМЯТЬ ПРОГРАММЫ (ROM)
+       Добавьте "ROM" из библиотеки Memory
+       Параметры:
+         Address Bit Width: 16
+         Data Bit Width: 16
+         Contents: загрузить скомпилированный server.img
+       Подключения:
+         ROM.A  → CdM-16.addr  (16 бит)
+         ROM.D  → CdM-16.data_in (16 бит, когда data/inst=0)
+         Включить ROM только когда data/inst=0 (память программ)
+
+    4. ПАМЯТЬ ДАННЫХ (RAM)
+       Добавьте "RAM" из библиотеки Memory
+       Параметры:
+         Address Bit Width: 16
+         Data Bit Width: 16
+       Подключения (через мультиплексор/демультиплексор):
+         RAM.A   → CdM-16.addr
+         RAM.din → CdM-16.data_out
+         RAM.dout→ CdM-16.data_in (когда data/inst=1 и not MMIO)
+         RAM.ld  → комбинация сигналов memory+data/inst+read/write
+       Включить RAM когда data/inst=1 И addr < 0xE000
+
+    5. MMIO-ДЕКОДЕР
+       Добавьте компаратор/логику для определения MMIO:
+         is_mmio = (addr[15:6] == 0b1110_0000_00)  ; addr >= 0xE000
+         uart_sel = addr[5:4]                        ; номер слота 0–3
+         reg_off  = addr[3:1]                        ; смещение регистра
+
+    6. UART #0 (порт 8001)
+       Добавьте "UART" из библиотеки "Network I/O"
+       Настройки: Port = 8001
+       Подключения:
+         UART.clk    → тактовый сигнал схемы
+         UART.en     → is_mmio AND (uart_sel == 0) AND memory
+         UART.rd/wr' → CdM-16.read/write
+         UART.TX     → CdM-16.data_out[7:0]
+         CdM-16.data_in[7:0] ← UART.RX  (когда read=1)
+         CdM-16.irq  ← UART.dt  (через приоритетный энкодер)
+         CdM-16.int_vec[5:0] ← 5  (когда UART#0.dt=1)
+         CdM-16.IAck → (сброс через логику)
+
+    7. UART #1, #2, #3 (порты 8002, 8003, 8004)
+       Аналогично UART#0, с соответствующими портами и int_vec (6,7,8)
+
+    8. IRQ ПРИОРИТЕТНЫЙ ЭНКОДЕР
+       Логика: если несколько UART имеют dt=1 одновременно,
+       выбираем с наименьшим номером (приоритет 0 > 1 > 2 > 3)
+         irq     = dt0 | dt1 | dt2 | dt3
+         int_vec = dt0 ? 5 : (dt1 ? 6 : (dt2 ? 7 : 8))
+       Реализуйте через приоритетный энкодер (Priority Encoder из Plexers)
+
+    9. ТАКТИРОВАНИЕ
+       Добавьте Clock из Base
+       Частота: 1 кГц (стандартная для Logisim)
+       Подключите к:
+         CdM-16.clk
+         Всем UART.clk
+
+    10. СИГНАЛЫ УПРАВЛЕНИЯ ПАМЯТЬЮ
+        Добавьте AND-ворота:
+          ram_en  = memory AND (data/inst==1) AND NOT is_mmio
+          rom_en  = memory AND (data/inst==0)
+          mmio_en = memory AND is_mmio
+
+    11. ДАННЫЕ ПРИ ЧТЕНИИ
+        Мультиплексор данных на входе data_in:
+          sel=0: ROM.D    (когда data/inst=0)
+          sel=1: RAM.dout (когда data/inst=1, not mmio)
+          sel=2: UART.RX  (когда mmio, read=1)
+        Разрядность выходного мультиплексора: 16 бит
+
+    12. ЗАГРУЗКА ПРОГРАММЫ
+        После сборки схемы:
+        a) Скомпилируйте server.asm:
+           cocas --target cdm16 server.asm -o server.img
+        b) Щёлкните правой кнопкой на ROM в Logisim
+           > Edit Contents > Load from file
+           Выберите server.img
+
+    13. ЗАПУСК
+        a) Запустите схему в Logisim (нажмите Run или Ctrl+K)
+        b) Запустите Python-роутер: python3 router.py
+        c) Подключайтесь: telnet 127.0.0.1 7001
+    -->
+
+    <!-- Заглушка для Logisim XML — реальную схему собрать вручную -->
+    <!-- Logisim не поддерживает полное описание схем в XML без GUI-элементов -->
+
+    <wire from="(0,0)" to="(0,0)"/>
+  </circuit>
+</project>
