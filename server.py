@@ -1,54 +1,32 @@
 import socket
 import threading
 
-HOST = '0.0.0.0'
-PORT = 7241
+A2_TX = ("10.151.150.217", 9000)
+B2_RX = ("10.151.150.217", 9001)
 
-def relay(src, dst):
-    try:
-        while True:
-            data = src.recv(4096)
-            if not data:
-                break
-            dst.sendall(data)
-    except:
-        pass
-    finally:
-        try:
-            src.shutdown(socket.SHUT_RDWR)
-        except:
-            pass
-        try:
-            dst.shutdown(socket.SHUT_RDWR)
-        except:
-            pass
-        src.close()
-        dst.close()
+A1_TX = ("10.151.150.201", 8000)
+B1_RX = ("10.151.150.201", 8001)
 
-def main():
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind((HOST, PORT))
-    srv.listen(2)
+sa1 = socket.create_connection(A1_TX)
+sb1 = socket.create_connection(B1_RX)
 
+sa2 = socket.create_connection(A2_TX)
+sb2 = socket.create_connection(B2_RX)
+
+def forward(src, dst):
     while True:
-        print(f"Ждём первого клиента на {PORT}...")
-        a, addr_a = srv.accept()
-        print(f"Первый подключился: {addr_a}")
+        data = src.recv(1024)
+        if not data:
+            break
+        print(data)
+        dst.sendall(data)
 
-        print(f"Ждём второго клиента на {PORT}...")
-        b, addr_b = srv.accept()
-        print(f"Второй подключился: {addr_b}")
+threading.Thread(target=forward, args=(sa1, sb2)).start()
+threading.Thread(target=forward, args=(sb2, sa1)).start()
 
-        t1 = threading.Thread(target=relay, args=(a, b), daemon=True)
-        t2 = threading.Thread(target=relay, args=(b, a), daemon=True)
+threading.Thread(target=forward, args=(sa2, sb1)).start()
+threading.Thread(target=forward, args=(sb1, sa2)).start()
 
-        t1.start()
-        t2.start()
+print("Bridge running")
 
-        t1.join()
-        t2.join()
-        print("Сессия завершена")
-
-if __name__ == '__main__':
-    main()
+input()
