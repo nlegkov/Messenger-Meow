@@ -16,18 +16,16 @@ default_handler>
     halt
 
 main>
-    ldi sp, 0xf000
-
-    sti
-
-wait>
-    jmp wait
+    jsr input_inter
+    ldi r1, 34
+    jsr main
 
 input_inter>
     ldi r0, 0xff00
-    ldi r1, 0x0000
-    stw r1, r0
-    rti
+    ldw r0, r0
+    ldi r2, 0xff02
+    ldw r2, r2
+    jsr main
 
 end.
 
